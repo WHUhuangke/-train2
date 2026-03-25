@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>铁路抢票前端原型</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>铁路抢票系统（前端原型）</h1>
+      <div class="auth-area">
+        <label>
+          Token
+          <input id="tokenInput" type="text" placeholder="Bearer token（可选）" />
+        </label>
+        <button id="saveTokenBtn">保存</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="card">
+        <h2>1. 余票查询</h2>
+        <form id="queryForm" class="grid-form">
+          <label>
+            出发日期
+            <input type="date" name="travelDate" required />
+          </label>
+          <label>
+            起点站
+            <input type="text" name="fromStationCode" placeholder="如：BJP" required />
+          </label>
+          <label>
+            终点站
+            <input type="text" name="toStationCode" placeholder="如：SHH" required />
+          </label>
+          <button type="submit">查询余票</button>
+        </form>
+        <div id="queryError" class="msg error hidden"></div>
+        <div id="queryLoading" class="msg hidden">查询中...</div>
+        <ul id="trainList" class="train-list"></ul>
+      </section>
+
+      <section class="card">
+        <h2>2. 抢票确认</h2>
+        <form id="grabForm" class="grid-form">
+          <label>
+            车次
+            <input type="text" name="trainNo" required />
+          </label>
+          <label>
+            出发日期
+            <input type="date" name="travelDate" required />
+          </label>
+          <label>
+            起点站
+            <input type="text" name="fromStationCode" required />
+          </label>
+          <label>
+            终点站
+            <input type="text" name="toStationCode" required />
+          </label>
+          <label>
+            席别
+            <select name="seatType" required>
+              <option value="SECOND_CLASS">二等座</option>
+              <option value="FIRST_CLASS">一等座</option>
+              <option value="BUSINESS">商务座</option>
+            </select>
+          </label>
+          <label>
+            乘车人 IDs（逗号分隔）
+            <input type="text" name="passengerIds" placeholder="P1001,P1002" required />
+          </label>
+          <button type="submit" id="grabBtn">发起抢票</button>
+        </form>
+        <div id="grabError" class="msg error hidden"></div>
+        <div id="grabResult" class="msg hidden"></div>
+      </section>
+
+      <section class="card">
+        <h2>3. 订单跟踪</h2>
+        <div class="inline-actions">
+          <button id="refreshOrdersBtn">刷新订单列表</button>
+          <button id="connectSseBtn">连接 SSE</button>
+          <button id="disconnectSseBtn" class="danger">断开 SSE</button>
+        </div>
+        <div id="sseStatus" class="msg">SSE 未连接</div>
+        <ul id="orderList" class="order-list"></ul>
+      </section>
+    </main>
+
+    <template id="trainItemTemplate">
+      <li class="train-item">
+        <div class="line-1">
+          <strong class="train-no"></strong>
+          <span class="time"></span>
+          <span class="duration"></span>
+        </div>
+        <div class="line-2 seats"></div>
+      </li>
+    </template>
+
+    <template id="orderItemTemplate">
+      <li class="order-item">
+        <div>
+          <strong class="order-id"></strong>
+          <span class="order-status badge"></span>
+        </div>
+        <div class="order-meta"></div>
+        <div class="inline-actions">
+          <button class="pay-btn">一键支付</button>
+          <button class="detail-btn">刷新详情</button>
+        </div>
+      </li>
+    </template>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
