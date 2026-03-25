@@ -1,6 +1,7 @@
 import { getOrder, grabOrder, listOrders, openSse, payOrder, queryAvailability } from './api.js';
 import { orderStatusText } from './config.js';
 import { getState, setCurrentOrderId, setOrders, setSseInstance, setToken, upsertOrder } from './store.js';
+import { extractOrders, isFinalOrderStatus, normalizeStationCode, parsePassengerIds } from './utils.js';
 
 const tokenInput = document.querySelector('#tokenInput');
 const saveTokenBtn = document.querySelector('#saveTokenBtn');
@@ -22,6 +23,7 @@ const trainItemTemplate = document.querySelector('#trainItemTemplate');
 const orderItemTemplate = document.querySelector('#orderItemTemplate');
 
 let pollingTimer = null;
+let reconnectTimer = null;
 
 init();
 
@@ -33,6 +35,7 @@ function init() {
   refreshOrdersBtn.addEventListener('click', refreshOrders);
   connectSseBtn.addEventListener('click', connectSse);
   disconnectSseBtn.addEventListener('click', disconnectSse);
+  window.addEventListener('beforeunload', cleanup);
 
   refreshOrders();
 }
@@ -50,6 +53,8 @@ async function onQuery(event) {
 
   const formData = new FormData(queryForm);
   const params = Object.fromEntries(formData.entries());
+  params.fromStationCode = normalizeStationCode(params.fromStationCode);
+  params.toStationCode = normalizeStationCode(params.toStationCode);
 
   if (params.fromStationCode === params.toStationCode) {
     queryError.textContent = '起点站和终点站不能相同';
@@ -60,7 +65,7 @@ async function onQuery(event) {
 
   try {
     const data = await queryAvailability(params);
-    renderTrains(data.trains || []);
+    renderTrains(data?.trains || []);
   } catch (error) {
     queryError.textContent = error.message;
     show(queryError);
@@ -92,9 +97,10 @@ function renderTrains(trains) {
 }
 
 function fillGrabFormByTrain(train) {
-  grabForm.trainNo.value = train.trainNo;
-  grabForm.fromStationCode.value = train.fromStationCode;
-  grabForm.toStationCode.value = train.toStationCode;
+  grabForm.elements.trainNo.value = train.trainNo;
+  grabForm.elements.fromStationCode.value = train.fromStationCode;
+  grabForm.elements.toStationCode.value = train.toStationCode;
+  grabForm.elements.travelDate.value = queryForm.elements.travelDate.value;
 }
 
 async function onGrab(event) {
@@ -104,13 +110,18 @@ async function onGrab(event) {
 
   const formData = new FormData(grabForm);
   const payload = Object.fromEntries(formData.entries());
-  payload.passengerIds = String(payload.passengerIds)
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+  payload.passengerIds = parsePassengerIds(payload.passengerIds);
+  payload.fromStationCode = normalizeStationCode(payload.fromStationCode);
+  payload.toStationCode = normalizeStationCode(payload.toStationCode);
 
   if (payload.passengerIds.length === 0) {
     grabError.textContent = '请至少填写 1 个乘车人';
+    show(grabError);
+    return;
+  }
+
+  if (payload.fromStationCode === payload.toStationCode) {
+    grabError.textContent = '起点站和终点站不能相同';
     show(grabError);
     return;
   }
@@ -139,8 +150,7 @@ async function onGrab(event) {
 async function refreshOrders() {
   try {
     const data = await listOrders();
-    const orders = data.records || data.orders || [];
-    setOrders(orders);
+    setOrders(extractOrders(data));
     renderOrders();
   } catch (error) {
     toast(`刷新订单失败：${error.message}`, true);
@@ -164,7 +174,7 @@ function renderOrders() {
     node.querySelector('.order-meta').textContent = `车次 ${order.trainNo || '-'}，席别 ${order.seatType || '-'}`;
 
     const payBtn = node.querySelector('.pay-btn');
-    payBtn.disabled = order.status !== 3;
+    payBtn.disabled = Number(order.status) !== 3;
     payBtn.addEventListener('click', () => onPay(order.orderId));
 
     node.querySelector('.detail-btn').addEventListener('click', () => refreshOrderDetail(order.orderId));
@@ -205,8 +215,14 @@ function connectSse() {
       handleSseMessage(message);
     },
     () => {
-      sseStatus.textContent = 'SSE 异常中断，将继续轮询订单状态';
+      setSseInstance(null);
+      sseStatus.textContent = 'SSE 异常中断，3 秒后重连（轮询兜底生效）';
       sseStatus.classList.add('error');
+
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        connectSse();
+      }, 3000);
     },
   );
 
@@ -216,6 +232,7 @@ function connectSse() {
 }
 
 function disconnectSse() {
+  clearTimeout(reconnectTimer);
   if (getState().sse) {
     getState().sse.close();
     setSseInstance(null);
@@ -224,7 +241,7 @@ function disconnectSse() {
 }
 
 function handleSseMessage(message) {
-  if (message.orderId) {
+  if (message.orderId && message.toStatus) {
     upsertOrder({ orderId: message.orderId, status: message.toStatus });
     renderOrders();
 
@@ -244,7 +261,7 @@ function startOrderPolling() {
 
     await refreshOrderDetail(currentOrderId);
     const target = getState().orders.find((item) => item.orderId === currentOrderId);
-    if (target && [4, 5, 6].includes(target.status)) {
+    if (target && isFinalOrderStatus(target.status)) {
       stopOrderPolling();
     }
   }, 5000);
@@ -255,6 +272,11 @@ function stopOrderPolling() {
     clearInterval(pollingTimer);
     pollingTimer = null;
   }
+}
+
+function cleanup() {
+  stopOrderPolling();
+  disconnectSse();
 }
 
 function show(el) {

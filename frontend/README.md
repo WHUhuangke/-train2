@@ -20,6 +20,7 @@ python3 -m http.server 5173
 - 订单列表与订单详情刷新
 - 支付按钮（仅状态为“待支付”可点击）
 - SSE 连接/断开 + 状态更新处理
+- SSE 异常后自动 3 秒重连
 - 轮询兜底（抢票后每 5 秒刷新当前订单）
 
 ## 后端接口约定
@@ -36,5 +37,13 @@ localStorage.setItem('apiBaseUrl', 'http://your-gateway-host/api')
 
 ## 注意
 
-- SSE 在浏览器原生 `EventSource` 下不支持自定义 Header，本原型将 token 追加在 query 参数中（`?token=`）。
+- SSE 在浏览器原生 `EventSource` 下不支持自定义 Header，本原型将 token 追加在 query 参数中（`?token=`，会自动去掉 `Bearer ` 前缀）。
 - 如果后端要求 `Authorization` Header，请让网关支持 cookie 会话，或改为 fetch-stream/短轮询方案。
+
+## 本地测试
+
+```bash
+node --test tests/utils.test.mjs
+node --check src/main.js
+node --check src/api.js
+```

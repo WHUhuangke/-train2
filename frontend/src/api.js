@@ -1,14 +1,15 @@
 import { appConfig } from './config.js';
 import { getState } from './store.js';
 
-function createHeaders(extraHeaders = {}) {
-  const headers = {
-    'Content-Type': 'application/json',
-    ...extraHeaders,
-  };
+function createHeaders(method, extraHeaders = {}) {
+  const headers = { ...extraHeaders };
   const { token } = getState();
   if (token) {
     headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  }
+
+  if (method !== 'GET' && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
   }
   return headers;
 }
@@ -16,7 +17,7 @@ function createHeaders(extraHeaders = {}) {
 async function request(path, { method = 'GET', body, headers = {} } = {}) {
   const response = await fetch(`${appConfig.apiBaseUrl}${path}`, {
     method,
-    headers: createHeaders(headers),
+    headers: createHeaders(method, headers),
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -68,7 +69,7 @@ export function openSse(onMessage, onError) {
   const { token } = getState();
   const url = new URL(`${appConfig.apiBaseUrl}/notifications/sse/subscribe`);
   if (token) {
-    url.searchParams.set('token', token);
+    url.searchParams.set('token', token.replace(/^Bearer\s+/i, ''));
   }
 
   const source = new EventSource(url.toString());
